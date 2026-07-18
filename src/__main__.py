@@ -11,27 +11,145 @@ class LLM:
         pass
     def add_numbers(a: int, b: int):
         return a + b
+    def all_functions(self):
+        with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
+            content = file.read()
+            functions_text = json.loads(content)
+        lst = []
+        for function in functions_text:
+            lst.append(function["name"])
+
+        return lst
+
+
     def generate_text(self,prompt,llm):
         
         inputs = llm.encode(prompt)
         inputs = inputs.tolist()[0]
         new_token =[]
+        start = 0
         for _ in range(60):
-            # print("heeeeeeeeere ",type(inputs))
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
-            predicted_tensor = torch.argmax(logits)
-            new_token.append(predicted_tensor.item())
-            inputs.append(predicted_tensor.item())
+            if start == 0:
+                wanted = llm.encode("{").tolist()[0][0]
+                for i in range(len(logits)):
+                    if i not in [wanted]:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                start +=1
+            elif start ==1:
+                ids =  llm.encode("function").tolist()[0]
+                for token_id in ids:
+                    logits = llm.get_logits_from_input_ids(inputs)
+                    logits = torch.tensor(logits)
+                    for i in range(len(logits)):
+                        if i not in [token_id]:
+                            logits[i] = float("-inf")
+                    predicted_tensor = torch.argmax(logits)
+                    new_token.append(predicted_tensor.item())
+                    inputs.append(predicted_tensor.item())
+                start +=1
+            elif start == 2:
+                wanted = llm.encode(".").tolist()[0][0]
+                for i in range(len(logits)):
+                    if i not in [wanted]:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                start +=1
+            elif start == 3:
+                functions = self.all_functions()
+                ids_lst = []
+                for function in functions:
+                    ids_lst.append(llm.encode(function).tolist()[0])
+                id_token = []
+                id_tokens = [id_s[0] for id_s in ids_lst]
+                for token_id in id_tokens:
+                    logits = llm.get_logits_from_input_ids(inputs)
+                    logits = torch.tensor(logits)
+                    for i in range(len(logits)):
+                        if i not in [token_id]:
+                            logits[i] = float("-inf")
+                    predicted_tensor = torch.argmax(logits)
+                    new_token.append(predicted_tensor.item())
+                    inputs.append(predicted_tensor.item())
+                for ids in ids_lst:
+                    for token_id in ids[1:]:
+                        if token_id != predicted_tensor:
+                            break
+                        logits = llm.get_logits_from_input_ids(inputs)
+                        logits = torch.tensor(logits)
+                        allowed == [token_id]
+                        
+                        for i in range(len(logits)):
+                            if i not in [allowed]:
+                                logits[i] = float("-inf")
+                        predicted_tensor = torch.argmax(logits)
+                        new_token.append(predicted_tensor.item())
+                        inputs.append(predicted_tensor.item())
+                start+=1
+                # for ids in functions:
+                #     for token_id in ids:
+                #     logits = llm.get_logits_from_input_ids(inputs)
+                #     logits = torch.tensor(logits)
+                #     for i in range(len(logits)):
+                #         if i not in ids:
+                #             allowed = token_id
+                #     for i in range(len(logits)):
+                #         if i not in [allowed]:
+                #             logits[i] = float("-inf")
+                #     predicted_tensor = torch.argmax(logits)
+                #     new_token.append(predicted_tensor.item())
+                #     inputs.append(predicted_tensor.item())
+
+                # ids =  llm.encode(functions).tolist()[0]
+                # for token_id in ids:
+                #     logits = llm.get_logits_from_input_ids(inputs)
+                #     logits = torch.tensor(logits)
+                #     for i in range(len(logits)):
+                #         if i not in ids:
+                #             allowed = token_id
+                #     for i in range(len(logits)):
+                #         if i not in [allowed]:
+                #             logits[i] = float("-inf")
+                #     predicted_tensor = torch.argmax(logits)
+                #     new_token.append(predicted_tensor.item())
+                #     inputs.append(predicted_tensor.item())
+                # start +=1
+
+
+
+                # for token_id, token in vocab.items():
+                #     for i in range(len(logits)):
+                #         for e in range(len(wanted)):
+                #             if token in logits[e]:
+                #                 allowed = token_id
+                #         for i in range(len(logits)):
+                #             if i not in allowed:
+                #                 logits[i] = float("-inf")
+                # if "function" in new_token:
+                #     start +=1   
+            
+            # predicted_tensor = torch.argmax(logits)
+            # new_token.append(predicted_tensor.item())
+            # inputs.append(predicted_tensor.item())
+        
+        # start +=1
+        
         answer = llm.decode(new_token)
         result = json.loads(answer)
-        print(type(result))
-        print(answer)
+        # print(type(result))
+        # print(answer)
 
 
 
 
-
+# for token_id in ids.tolist()[0]:
+#     print(token_id, llm.decode([token_id]))
 
 S = LLM()
 llm = Small_LLM_Model()
