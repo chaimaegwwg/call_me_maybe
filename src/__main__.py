@@ -68,29 +68,41 @@ class LLM:
                     ids_lst.append(llm.encode(function).tolist()[0])
                 id_token = []
                 id_tokens = [id_s[0] for id_s in ids_lst]
-                for token_id in id_tokens:
+
+                # for token_id in id_tokens:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
+                for i in range(len(logits)):
+                    if i not in id_tokens:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                # for ids in ids_lst:
+                #     if ids[0] not in [predicted_tensor]:
+                #         continue
+                lst_gath_func =[]
+                for ids in ids_lst:
+                    if ids[0] not in [predicted_tensor]:
+                        continue
+                    lst_gath_func.append(ids[1:])
+                # [[][]]
+                for i in range(len(lst_gath_func)):
+                    for j in range(len(min(lst_gath_func))):
+                        logits = llm.get_logits_from_input_ids(inputs)
+                        logits = torch.tensor(logits)
+                
+                
+                for token_id in lst_gath_func:
+                    
                     logits = llm.get_logits_from_input_ids(inputs)
                     logits = torch.tensor(logits)
                     for i in range(len(logits)):
-                        if i not in [token_id]:
+                        if i not in token_id:
                             logits[i] = float("-inf")
                     predicted_tensor = torch.argmax(logits)
                     new_token.append(predicted_tensor.item())
                     inputs.append(predicted_tensor.item())
-                for ids in ids_lst:
-                    for token_id in ids[1:]:
-                        if token_id != predicted_tensor:
-                            break
-                        logits = llm.get_logits_from_input_ids(inputs)
-                        logits = torch.tensor(logits)
-                        allowed == [token_id]
-                        
-                        for i in range(len(logits)):
-                            if i not in [allowed]:
-                                logits[i] = float("-inf")
-                        predicted_tensor = torch.argmax(logits)
-                        new_token.append(predicted_tensor.item())
-                        inputs.append(predicted_tensor.item())
                 start+=1
                 # for ids in functions:
                 #     for token_id in ids:
