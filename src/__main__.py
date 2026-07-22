@@ -20,6 +20,15 @@ class LLM:
             lst.append(function["name"])
 
         return lst
+    def get_parameters(self,function_name):
+        with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
+            content = file.read()
+            functions_text = json.loads(content)
+        for function in functions_text:
+            if function["name"] == function_name:
+                return function["parameters"]
+
+        return None
 
 
     def generate_text(self,prompt,llm):
@@ -29,9 +38,9 @@ class LLM:
         new_token =[]
         start = 0
         for _ in range(60):
-            logits = llm.get_logits_from_input_ids(inputs)
-            logits = torch.tensor(logits)
             if start == 0:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
                 wanted = llm.encode("{").tolist()[0][0]
                 for i in range(len(logits)):
                     if i not in [wanted]:
@@ -62,10 +71,100 @@ class LLM:
                 inputs.append(predicted_tensor.item())
                 start +=1
             elif start == 3:
+                name_of_func = []
                 functions = self.all_functions()
                 ids_lst = []
                 for function in functions:
                     ids_lst.append(llm.encode(function).tolist()[0])
+                id_token = []
+                id_tokens = [id_s[0] for id_s in ids_lst]
+
+                # for token_id in id_tokens:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
+                for i in range(len(logits)):
+                    if i not in id_tokens:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                name_of_func.append(predicted_tensor.item())
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                # for ids in ids_lst:
+                #     if ids[0] not in [predicted_tensor]:
+                #         continue
+                lst_gath_func =[]
+                predicted = predicted_tensor.item()
+                for ids in ids_lst:
+                    if ids[0] != predicted:
+                        continue
+                    lst_gath_func.append(ids[1:])
+                if not lst_gath_func:
+                    print("No valid parameter")
+                    break
+                # [[][]]
+                max_n = 0
+                for i in lst_gath_func:
+                    if max_n <= len(i):
+                        max_n = len(i)
+                lst_index = []
+                for i in range(max_n):
+                    remove_lst = []
+                    lst_index =[]
+                    for func in lst_gath_func:
+                        if len(func) == 0  or i >= len(func):
+                            remove_lst.append(func)
+                            continue
+                        lst_index.append(func[i])
+
+                    logits = llm.get_logits_from_input_ids(inputs)
+                    logits = torch.tensor(logits)
+                    for n in range(len(logits)):
+                        if n not in lst_index:
+                            logits[n] = float("-inf")
+                    predicted_tensor = torch.argmax(logits)
+                    for fun in lst_gath_func:
+                        predicted = predicted_tensor.item()
+                        if len(fun) == 0  or i >= len(fun) or fun[i] != predicted:
+                            remove_lst.append(fun) 
+                    for fun in remove_lst:
+                        if fun not in lst_gath_func:
+                            continue
+                        lst_gath_func.remove(fun)
+                    name_of_func.append(predicted_tensor.item())
+                    new_token.append(predicted_tensor.item())
+                    inputs.append(predicted_tensor.item())
+                start+=1
+            elif start == 4:
+                ids =  llm.encode("parameters").tolist()[0]
+                for token_id in ids:
+                    logits = llm.get_logits_from_input_ids(inputs)
+                    logits = torch.tensor(logits)
+                    for i in range(len(logits)):
+                        if i not in [token_id]:
+                            logits[i] = float("-inf")
+                    predicted_tensor = torch.argmax(logits)
+                    new_token.append(predicted_tensor.item())
+                    inputs.append(predicted_tensor.item())
+                start +=1
+            elif start == 5:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
+                wanted = llm.encode("{").tolist()[0][0]
+                for i in range(len(logits)):
+                    if i not in [wanted]:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                start +=1
+            elif start == 6:
+                name = llm.decode(name_of_func)
+                parameters = self.get_parameters(name)
+                
+                # functions = self.all_parameter()
+                ids_lst = []
+                for parameter in parameters:
+                    ids_lst.append(llm.encode(parameter).tolist()[0])
                 id_token = []
                 id_tokens = [id_s[0] for id_s in ids_lst]
 
@@ -82,75 +181,82 @@ class LLM:
                 #     if ids[0] not in [predicted_tensor]:
                 #         continue
                 lst_gath_func =[]
+                predicted = predicted_tensor.item()
                 for ids in ids_lst:
-                    if ids[0] not in [predicted_tensor]:
+                    if ids[0] != predicted:
                         continue
                     lst_gath_func.append(ids[1:])
+                if not lst_gath_func:
+                    print("No valid parameter")
+                    break
                 # [[][]]
-                for i in range(len(lst_gath_func)):
-                    for j in range(len(min(lst_gath_func))):
-                        logits = llm.get_logits_from_input_ids(inputs)
-                        logits = torch.tensor(logits)
-                
-                
-                for token_id in lst_gath_func:
-                    
+                max_n = 0
+                for i in lst_gath_func:
+                    if max_n <= len(i):
+                        max_n = len(i)
+                lst_index = []
+                for i in range(max_n):
+                    remove_lst = []
+                    lst_index =[]
+                    for func in lst_gath_func:
+                        if len(func) == 0  or i >= len(func):
+                            remove_lst.append(func)
+                            continue
+                        lst_index.append(func[i])
+
                     logits = llm.get_logits_from_input_ids(inputs)
                     logits = torch.tensor(logits)
-                    for i in range(len(logits)):
-                        if i not in token_id:
-                            logits[i] = float("-inf")
+                    for n in range(len(logits)):
+                        if n not in lst_index:
+                            logits[n] = float("-inf")
                     predicted_tensor = torch.argmax(logits)
+                    for fun in lst_gath_func:
+                        predicted = predicted_tensor.item()
+                        if len(fun) == 0  or i >= len(fun) or fun[i] != predicted:
+                            remove_lst.append(fun) 
+                    for fun in remove_lst:
+                        if fun not in lst_gath_func:
+                            continue
+                        lst_gath_func.remove(fun)
                     new_token.append(predicted_tensor.item())
                     inputs.append(predicted_tensor.item())
                 start+=1
-                # for ids in functions:
-                #     for token_id in ids:
-                #     logits = llm.get_logits_from_input_ids(inputs)
-                #     logits = torch.tensor(logits)
-                #     for i in range(len(logits)):
-                #         if i not in ids:
-                #             allowed = token_id
-                #     for i in range(len(logits)):
-                #         if i not in [allowed]:
-                #             logits[i] = float("-inf")
-                #     predicted_tensor = torch.argmax(logits)
-                #     new_token.append(predicted_tensor.item())
-                #     inputs.append(predicted_tensor.item())
+            elif start == 7:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
+                # wanted = llm.encode("{").tolist()[0][0]
+                # for i in range(len(logits)):
+                #     if i not in [wanted]:
+                #         logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                token = llm.decode([predicted_tensor.item()])
 
-                # ids =  llm.encode(functions).tolist()[0]
-                # for token_id in ids:
-                #     logits = llm.get_logits_from_input_ids(inputs)
-                #     logits = torch.tensor(logits)
-                #     for i in range(len(logits)):
-                #         if i not in ids:
-                #             allowed = token_id
-                #     for i in range(len(logits)):
-                #         if i not in [allowed]:
-                #             logits[i] = float("-inf")
-                #     predicted_tensor = torch.argmax(logits)
-                #     new_token.append(predicted_tensor.item())
-                #     inputs.append(predicted_tensor.item())
-                # start +=1
-
-
-
-                # for token_id, token in vocab.items():
-                #     for i in range(len(logits)):
-                #         for e in range(len(wanted)):
-                #             if token in logits[e]:
-                #                 allowed = token_id
-                #         for i in range(len(logits)):
-                #             if i not in allowed:
-                #                 logits[i] = float("-inf")
-                # if "function" in new_token:
-                #     start +=1   
-            
-            # predicted_tensor = torch.argmax(logits)
-            # new_token.append(predicted_tensor.item())
-            # inputs.append(predicted_tensor.item())
+                if token in [",", "}"]:
+                    start += 1
+            elif start == 8:
+                if token == ",":
+                    start = 6
+                elif token == "}":
+                    start = 9
+                else:
+                    print("Invalid separator:", token)
+                    break
+            elif start == 9:
+                logits = llm.get_logits_from_input_ids(inputs)
+                logits = torch.tensor(logits)
+                wanted = llm.encode("}").tolist()[0][0]
+                for i in range(len(logits)):
+                    if i not in [wanted]:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                start +=1
+                
+      
         
-        # start +=1
         
         answer = llm.decode(new_token)
         result = json.loads(answer)
@@ -244,4 +350,3 @@ If no function matches, return null.""",llm)
 
 #             AVAILABLE FUNCTIONS:
 # """
-
