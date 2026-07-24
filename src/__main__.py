@@ -24,8 +24,14 @@ class LLM:
         with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
             content = file.read()
             functions_text = json.loads(content)
+        # for function in functions_text:
+        #     if function["name"] == function_name:
+        #         return function["parameters"]
+        print("Searching for:", repr(function_name))
         for function in functions_text:
+            print("JSON contains:", repr(function["name"]))
             if function["name"] == function_name:
+                print("MATCH!")
                 return function["parameters"]
 
         return None
@@ -160,6 +166,9 @@ class LLM:
             elif start == 6:
                 name = llm.decode(name_of_func)
                 parameters = self.get_parameters(name)
+                if parameters is None:
+                    print("Decoded name:", repr(name))
+                    return
                 
                 # functions = self.all_parameter()
                 ids_lst = []
