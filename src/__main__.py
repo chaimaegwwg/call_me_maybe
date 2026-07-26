@@ -151,6 +151,7 @@ class LLM:
         new_token =[]
         start = 0
         for _ in range(60):
+            print("STATE =", start)
             if start == 0:
                 new_token,inputs =self.ft_constrain_tokens("{",inputs,new_token)
                 start +=1
@@ -188,19 +189,31 @@ class LLM:
                 predicted_tensor = torch.argmax(logits)
                 new_token.append(predicted_tensor.item())
                 inputs.append(predicted_tensor.item())
-                token = llm.decode([predicted_tensor.item()])
-                if token in [",", "}"]:
-                    start += 1
+                start+=1
+
             elif start == 8:
+                logits = torch.tensor(llm.get_logits_from_input_ids(inputs))
+                comma = llm.encode(",").tolist()[0][0]
+                brace = llm.encode("}").tolist()[0][0]
+                for i in range(len(logits)):
+                    if i not in [comma, brace]:
+                        logits[i] = float("-inf")
+                predicted_tensor = torch.argmax(logits)
+                new_token.append(predicted_tensor.item())
+                inputs.append(predicted_tensor.item())
+                token = llm.decode([predicted_tensor.item()])
+                start += 1
+            elif start == 9:
+                print("tooken",token)
                 if token == ",":
                     new_token,inputs =self.ft_constrain_tokens(',',inputs,new_token)
                     start = 6
-                elif token == "}":
-                    start = 9
+                # elif token == "}":
+                #     start = 8
                 else:
                     print("Invalid separator:", token)
                     break
-            elif start == 9:
+            elif start == 10:
                 new_token,inputs =self.ft_constrain_tokens("}",inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens('}',inputs,new_token)
                 start +=1
