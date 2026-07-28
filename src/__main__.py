@@ -21,12 +21,30 @@ class LLM:
 
         return lst
     def parameter_type_func(self,parameter):
+        
         with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
             content = file.read()
             functions_text = json.loads(content)
-        lst = []
+
+        lst = "l"
+        # lst = []
+        # for function in functions_text:
         for function in functions_text:
-            lst.append(function["name"][parameter])
+            try:
+                print("it go here")
+                lst = function["parameters"][parameter]
+                print("func",function["parameters"])
+            except:    
+                # print("no not here",function["parameters"][parameter])
+                # lst = function["parameters"][parameter]
+                continue
+
+
+        print("now",type(parameter),parameter)
+        #     print("hereeee",function["parameters"][parameter]["type"])
+        # lst = functions_text["parameters"][parameter]
+        lst = lst["type"]
+        # print("lst",lst["type"])
         return lst
 
 
@@ -58,7 +76,7 @@ class LLM:
         new_token.append(predicted_tensor.item())
         inputs.append(predicted_tensor.item())
         return new_token,inputs
-    def ft_constrain_tokens(self, parameter,inputs,new_token):
+    def ft_constrain_tokens(self,parameter,inputs,new_token):
         ids =  llm.encode(parameter).tolist()[0]
         for token_id in ids:
             logits = llm.get_logits_from_input_ids(inputs)
@@ -70,20 +88,21 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs
-    def ft_constrain_tokens_parameter(self,inputs,new_token):
-        ids =  llm.encode(parameter).tolist()[0]
-        parameter = []
-        for token_id in ids:
-            logits = llm.get_logits_from_input_ids(inputs)
-            logits = torch.tensor(logits)
-            for i in range(len(logits)):
-                if i not in [token_id]:
-                    logits[i] = float("-inf")
-            predicted_tensor = torch.argmax(logits)
-            new_token.append(predicted_tensor.item())
-            append.parameter(predicted_tensor.item())
-            inputs.append(predicted_tensor.item())
-        return new_token,inputs,parameter
+    # def ft_constrain_tokens_parameter(self,inputs,new_token):
+    #     # parameters = 
+    #     ids =  llm.encode(parameter).tolist()[0]
+    #     parameter = []
+    #     for token_id in ids:
+    #         logits = llm.get_logits_from_input_ids(inputs)
+    #         logits = torch.tensor(logits)
+    #         for i in range(len(logits)):
+    #             if i not in [token_id]:
+    #                 logits[i] = float("-inf")
+    #         predicted_tensor = torch.argmax(logits)
+    #         new_token.append(predicted_tensor.item())
+    #         append.parameter(predicted_tensor.item())
+    #         inputs.append(predicted_tensor.item())
+    #     return new_token,inputs,parameter
     def ft_constrain_name_function(self,inputs,new_token):
         name_of_func = []
         functions = self.all_functions()
@@ -169,23 +188,23 @@ class LLM:
             name_of_parameter.append(predicted_tensor.item())
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
-        return new_token,inputs
-    def ft_numb(inputs,new_token):
+        return new_token,inputs,name_of_parameter
+    def ft_numb(self,inputs,new_token):
+        print("it open ")
         comma = llm.encode(",").tolist()[0][0]
         brace = llm.encode("}").tolist()[0][0]
         for _ in range(20):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
             predicted_tensor = torch.argmax(logits)
-            if predicted_tensor in [stop]:
+            if predicted_tensor in [comma,brace]:
                 break
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
 
-        return inputs,new_token
-    def ft_string(inputs,new_token):
-        stop = llm.encode('"').tolist()[0][0]
-        
+        return new_token,inputs
+    def ft_string(self,inputs,new_token):
+        stop = llm.encode('"').tolist()[0][0]     
         for _ in range(20):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
@@ -195,7 +214,7 @@ class LLM:
             if predicted_tensor in [stop]:
                 break
 
-        return inputs,new_token
+        return new_token, inputs
     def generate_text(self,prompt,llm):
         inputs = llm.encode(prompt)
         inputs = inputs.tolist()[0]
@@ -230,18 +249,26 @@ class LLM:
                 start +=1
             elif start == 6:
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
-                new_token,inputs,parameter = self.ft_constrain_tokens_parameter(inputs,new_token)
+                new_token,inputs,parameter = self.ft_constrain_parameters(inputs,new_token,name_of_func)
                 print("parameter",parameter)
-                new_token,inputs,parameter =self.ft_constrain_tokens('"',inputs,new_token)
+                new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens(':',inputs,new_token)
                 start+=1
             elif start == 7:
-                parameter_type = self.parameter_type_func(parameter)
-                print("commpre parameter",parameter_type)
+                parameters_t = llm.decode(parameter).strip()
+                # p = llm.encode("").tolist()[0][0]
+                print("commpre parameter",parameters_t)
+                parameter_type = self.parameter_type_func(parameters_t).strip()
+                print(parameter_type)
                 if parameter_type == "number":
+                    print("it go here")
                     new_token,inputs = self.ft_numb(inputs,new_token)
+                    
                 elif parameter_type == "string":
+                    print("here")
                     new_token,inputs = self.ft_string(inputs,new_token)
+                else:
+                    print("None parameter")
 
                 # logits = llm.get_logits_from_input_ids(inputs)
                 # logits = torch.tensor(logits)
@@ -272,10 +299,13 @@ class LLM:
                 else:
                     print("Invalid separator:", token)
                     break
+                start += 1
             elif start == 10:
                 new_token,inputs =self.ft_constrain_tokens("}",inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens('}',inputs,new_token)
                 start +=1
+            else:
+                break
                 
       
         
