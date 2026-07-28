@@ -20,6 +20,17 @@ class LLM:
             lst.append(function["name"])
 
         return lst
+    def parameter_type_func(self,parameter):
+        with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
+            content = file.read()
+            functions_text = json.loads(content)
+        lst = []
+        for function in functions_text:
+            lst.append(function["name"][parameter])
+        return lst
+
+
+        
     def get_parameters(self,function_name):
         with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
             content = file.read()
@@ -59,6 +70,20 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs
+    def ft_constrain_tokens_parameter(self,inputs,new_token):
+        ids =  llm.encode(parameter).tolist()[0]
+        parameter = []
+        for token_id in ids:
+            logits = llm.get_logits_from_input_ids(inputs)
+            logits = torch.tensor(logits)
+            for i in range(len(logits)):
+                if i not in [token_id]:
+                    logits[i] = float("-inf")
+            predicted_tensor = torch.argmax(logits)
+            new_token.append(predicted_tensor.item())
+            append.parameter(predicted_tensor.item())
+            inputs.append(predicted_tensor.item())
+        return new_token,inputs,parameter
     def ft_constrain_name_function(self,inputs,new_token):
         name_of_func = []
         functions = self.all_functions()
@@ -145,6 +170,32 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs
+    def ft_numb(inputs,new_token):
+        comma = llm.encode(",").tolist()[0][0]
+        brace = llm.encode("}").tolist()[0][0]
+        for _ in range(20):
+            logits = llm.get_logits_from_input_ids(inputs)
+            logits = torch.tensor(logits)
+            predicted_tensor = torch.argmax(logits)
+            if predicted_tensor in [stop]:
+                break
+            new_token.append(predicted_tensor.item())
+            inputs.append(predicted_tensor.item())
+
+        return inputs,new_token
+    def ft_string(inputs,new_token):
+        stop = llm.encode('"').tolist()[0][0]
+        
+        for _ in range(20):
+            logits = llm.get_logits_from_input_ids(inputs)
+            logits = torch.tensor(logits)
+            predicted_tensor = torch.argmax(logits)
+            new_token.append(predicted_tensor.item())
+            inputs.append(predicted_tensor.item())
+            if predicted_tensor in [stop]:
+                break
+
+        return inputs,new_token
     def generate_text(self,prompt,llm):
         inputs = llm.encode(prompt)
         inputs = inputs.tolist()[0]
@@ -179,16 +230,24 @@ class LLM:
                 start +=1
             elif start == 6:
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
-                new_token,inputs = self.ft_constrain_parameters(inputs,new_token,name_of_func)
-                new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
+                new_token,inputs,parameter = self.ft_constrain_tokens_parameter(inputs,new_token)
+                print("parameter",parameter)
+                new_token,inputs,parameter =self.ft_constrain_tokens('"',inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens(':',inputs,new_token)
                 start+=1
             elif start == 7:
-                logits = llm.get_logits_from_input_ids(inputs)
-                logits = torch.tensor(logits)
-                predicted_tensor = torch.argmax(logits)
-                new_token.append(predicted_tensor.item())
-                inputs.append(predicted_tensor.item())
+                parameter_type = self.parameter_type_func(parameter)
+                print("commpre parameter",parameter_type)
+                if parameter_type == "number":
+                    new_token,inputs = self.ft_numb(inputs,new_token)
+                elif parameter_type == "string":
+                    new_token,inputs = self.ft_string(inputs,new_token)
+
+                # logits = llm.get_logits_from_input_ids(inputs)
+                # logits = torch.tensor(logits)
+                # predicted_tensor = torch.argmax(logits)
+                # new_token.append(predicted_tensor.item())
+                # inputs.append(predicted_tensor.item())
                 start+=1
 
             elif start == 8:
