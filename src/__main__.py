@@ -176,8 +176,7 @@ class LLM:
         return new_token,inputs
     def ft_string(self,inputs,new_token):
         # print("the input that will",llm.decode(inputs))
-        stop = llm.encode('"').tolist()[0][0]     
-        generated_content = False
+        stop = llm.encode('"').tolist()[0][0]
         for _ in range(30):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
@@ -185,16 +184,21 @@ class LLM:
             predicted_tensor = torch.argmax(logits)
             token_id = predicted_tensor.item()
 
-            if token_id == stop and not generated_content:
-                print("predict",llm.decode(token_id))
-                continue
+            token_text = llm.decode([token_id])
+
+            # print("---> predict out", repr(token_text))
+            if '"' and "\n" in token_text:
+                new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
+                # print("the first break")
+                break
             new_token.append(token_id)
             inputs.append(token_id)
-            print("---> predict out",llm.decode(token_id))
-            generated_content = True
-            if token_id == stop:
-                print("because it stop here")
+
+            if '"' in token_text:
+                # print("because it stop here")
                 break
+
+
 
         return new_token, inputs
     def generate_text(self,prompt,llm):
@@ -243,9 +247,10 @@ class LLM:
                     new_token,inputs = self.ft_numb(inputs,new_token)
                     
                 elif parameter_type == "string":
-                    print("it go here string correctly")
+                    # print("it go here string correctly")
                     new_token, inputs = self.ft_constrain_tokens('"', inputs, new_token)
                     new_token,inputs = self.ft_string(inputs,new_token)
+                    # print(llm.decode(new_token))
                 else:
                     print("None parameter")
                 start+=1
@@ -259,10 +264,15 @@ class LLM:
                         logits[i] = float("-inf")
                 predicted_tensor = torch.argmax(logits)
                 token = llm.decode([predicted_tensor.item()])
+                # print("stop here first")
+                # print("it reached hereee",llm.decode(new_token))
                 start += 1
             elif start == 9:
+                nw = llm.decode(new_token)
                 if token == ",":
                     new_token,inputs =self.ft_constrain_tokens(',',inputs,new_token)
+                    start = 6
+                elif token == "}" and nw[-1] == ",":
                     start = 6
                 elif token == "}":
                     start +=1
@@ -271,8 +281,10 @@ class LLM:
                     break
                 # start += 1
             elif start == 10:
+                # print("before the state =10 ",llm.decode(new_token))
                 new_token,inputs =self.ft_constrain_tokens("}",inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens('}',inputs,new_token)
+                # print("after the state =10 ",llm.decode(new_token))
                 start +=1
             else:
                 break
@@ -298,7 +310,9 @@ with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') 
     # functions = json.loads(content)
     # functions_text = json.dumps(functions, indent=2)
 
-user_request = prompt[10]["prompt"]
+# for i in range(10):
+    # print("--------------->the promopt",i)
+user_request = prompt[9]["prompt"]    
 S.generate_text(f"""You are a function-calling assistant.
 
 You are given:
@@ -323,10 +337,10 @@ User Request:
 ----------------------------------------
 
 {{
-  "function": "<function_name>",
-  "arguments": {{
+"function": "<function_name>",
+"arguments": {{
     ...
-  }}
+}}
 }}
 
 Do not explain your reasoning.
