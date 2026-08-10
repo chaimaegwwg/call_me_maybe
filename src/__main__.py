@@ -31,20 +31,12 @@ class LLM:
         # for function in functions_text:
         for function in functions_text:
             try:
-                print("it go here")
                 lst = function["parameters"][parameter]
-                print("func",function["parameters"])
-            except:    
-                # print("no not here",function["parameters"][parameter])
-                # lst = function["parameters"][parameter]
+            except:
                 continue
 
 
-        print("now",type(parameter),parameter)
-        #     print("hereeee",function["parameters"][parameter]["type"])
-        # lst = functions_text["parameters"][parameter]
         lst = lst["type"]
-        # print("lst",lst["type"])
         return lst
 
 
@@ -53,14 +45,8 @@ class LLM:
         with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') as file:
             content = file.read()
             functions_text = json.loads(content)
-        # for function in functions_text:
-        #     if function["name"] == function_name:
-        #         return function["parameters"]
-        # print("Searching for:", repr(function_name))
         for function in functions_text:
-            # print("JSON contains:", repr(function["name"]))
             if function["name"] == function_name:
-                # print("MATCH!")
                 return function["parameters"]
 
         return None
@@ -133,7 +119,6 @@ class LLM:
         name = llm.decode(name_of_func).strip()
         parameters = self.get_parameters(name)
         if parameters is None:
-            print("Decoded name:", repr(name))
             return
         name_of_parameter = []
         # functions = self.all_parameter()
@@ -176,7 +161,6 @@ class LLM:
             inputs.append(predicted_tensor.item())
         return new_token,inputs,name_of_parameter
     def ft_numb(self,inputs,new_token):
-        print("it open ")
         new = []
         for _ in range(20):
             logits = llm.get_logits_from_input_ids(inputs)
@@ -188,18 +172,28 @@ class LLM:
             new_token.append(predicted_tensor.item())
             new.append(llm.decode(predicted_tensor))
             inputs.append(predicted_tensor.item())
-        print("----------------->", new)
 
         return new_token,inputs
     def ft_string(self,inputs,new_token):
+        # print("the input that will",llm.decode(inputs))
         stop = llm.encode('"').tolist()[0][0]     
-        for _ in range(20):
+        generated_content = False
+        for _ in range(30):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
+
             predicted_tensor = torch.argmax(logits)
-            new_token.append(predicted_tensor.item())
-            inputs.append(predicted_tensor.item())
-            if predicted_tensor in [stop]:
+            token_id = predicted_tensor.item()
+
+            if token_id == stop and not generated_content:
+                print("predict",llm.decode(token_id))
+                continue
+            new_token.append(token_id)
+            inputs.append(token_id)
+            print("---> predict out",llm.decode(token_id))
+            generated_content = True
+            if token_id == stop:
+                print("because it stop here")
                 break
 
         return new_token, inputs
@@ -209,7 +203,6 @@ class LLM:
         new_token =[]
         start = 0
         for _ in range(60):
-            # print("STATE =", start)
             if start == 0:
                 new_token,inputs =self.ft_constrain_tokens("{",inputs,new_token)
                 start +=1
@@ -231,6 +224,7 @@ class LLM:
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
                 new_token,inputs = self.ft_constrain_tokens("arguments",inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
+                new_token,inputs =self.ft_constrain_tokens(':',inputs,new_token)
                 start +=1
             elif start == 5:
                 new_token,inputs =self.ft_constrain_tokens("{",inputs,new_token)
@@ -238,31 +232,22 @@ class LLM:
             elif start == 6:
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
                 new_token,inputs,parameter = self.ft_constrain_parameters(inputs,new_token,name_of_func)
-                print("parameter",parameter)
+
                 new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens(':',inputs,new_token)
                 start+=1
             elif start == 7:
                 parameters_t = llm.decode(parameter).strip()
-                # p = llm.encode("").tolist()[0][0]
-                # print("commpre parameter",parameters_t)
                 parameter_type = self.parameter_type_func(parameters_t).strip()
-                print(parameter_type)
                 if parameter_type == "number":
-                    print("it go here number")
                     new_token,inputs = self.ft_numb(inputs,new_token)
                     
                 elif parameter_type == "string":
-                    print("here string")
+                    print("it go here string correctly")
+                    new_token, inputs = self.ft_constrain_tokens('"', inputs, new_token)
                     new_token,inputs = self.ft_string(inputs,new_token)
                 else:
                     print("None parameter")
-
-                # logits = llm.get_logits_from_input_ids(inputs)
-                # logits = torch.tensor(logits)
-                # predicted_tensor = torch.argmax(logits)
-                # new_token.append(predicted_tensor.item())
-                # inputs.append(predicted_tensor.item())
                 start+=1
 
             elif start == 8:
@@ -273,21 +258,18 @@ class LLM:
                     if i not in [comma, brace]:
                         logits[i] = float("-inf")
                 predicted_tensor = torch.argmax(logits)
-                new_token.append(predicted_tensor.item())
-                inputs.append(predicted_tensor.item())
                 token = llm.decode([predicted_tensor.item()])
                 start += 1
             elif start == 9:
-                print("tooken",token)
                 if token == ",":
                     new_token,inputs =self.ft_constrain_tokens(',',inputs,new_token)
                     start = 6
-                # elif token == "}":
-                #     start = 8
+                elif token == "}":
+                    start +=1
                 else:
                     print("Invalid separator:", token)
                     break
-                start += 1
+                # start += 1
             elif start == 10:
                 new_token,inputs =self.ft_constrain_tokens("}",inputs,new_token)
                 new_token,inputs =self.ft_constrain_tokens('}',inputs,new_token)
@@ -300,15 +282,10 @@ class LLM:
         
         answer = llm.decode(new_token)
         print(repr(answer))
-        # result = json.loads(answer)
-        # print(type(result))
-        # print(answer)
+   
 
 
 
-
-# for token_id in ids.tolist()[0]:
-#     print(token_id, llm.decode([token_id]))
 
 S = LLM()
 llm = Small_LLM_Model()
@@ -321,7 +298,7 @@ with open('/goinfre/cramadan/project/data/input/functions_definition.json','r') 
     # functions = json.loads(content)
     # functions_text = json.dumps(functions, indent=2)
 
-user_request = prompt[0]["prompt"]
+user_request = prompt[10]["prompt"]
 S.generate_text(f"""You are a function-calling assistant.
 
 You are given:
