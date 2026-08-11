@@ -4,17 +4,6 @@ import torch
 import json
 
 
-# class LLM:
-#     def __init__(self):
-#         with open('/goinfre/cramadan/project/data/input/functions_definition.json', 'r') as file:
-#             self.functions = json.load(file)
-#             self.fixed_tokens = {
-#                 "{": llm.encode("{").tolist()[0],
-#                 "}": llm.encode("}").tolist()[0],
-#                 '"': llm.encode('"').tolist()[0],
-#                 ":": llm.encode(":").tolist()[0],
-#                 ",": llm.encode(",").tolist()[0],
-#             }
 class LLM:
     def __init__(self, llm):
         with open('/goinfre/cramadan/project/data/input/functions_definition.json', 'r') as file:
@@ -27,7 +16,7 @@ class LLM:
             ":": llm.encode(":").tolist()[0],
             ",": llm.encode(",").tolist()[0],
             "function": llm.encode("function").tolist()[0],
-            "arguments": llm.encode("arguments").tolist()[0],
+            "arguments": llm.encode("arguments").tolist()[0]
         }
 
     def register_function(self):
@@ -69,9 +58,14 @@ class LLM:
         logits = llm.get_logits_from_input_ids(inputs)
         logits = torch.tensor(logits)
         wanted = llm.encode(parameter).tolist()[0][0]
-        for i in range(len(logits)):
-            if i not in [wanted]:
-                logits[i] = float("-inf")
+        
+        original_logits = logits.clone()
+        logits[:] = float("-inf")
+        logits[wanted] = original_logits[wanted]
+        
+        # for i in range(len(logits)):
+        #     if i not in [wanted]:
+        #         logits[i] = float("-inf")
         predicted_tensor = torch.argmax(logits)
         new_token.append(predicted_tensor.item())
         inputs.append(predicted_tensor.item())
@@ -107,9 +101,12 @@ class LLM:
 
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
-            for n in range(len(logits)):
-                if n not in lst_index:
-                    logits[n] = float("-inf")
+            original_logits = logits.clone()
+            logits[:] = float("-inf")
+            logits[lst_index] = original_logits[lst_index]
+            # for n in range(len(logits)):
+            #     if n not in lst_index:
+            #         logits[n] = float("-inf")
             predicted_tensor = torch.argmax(logits)
             for fun in lst_gath_func:
                 predicted = predicted_tensor.item()
@@ -152,17 +149,22 @@ class LLM:
 
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
-            for n in range(len(logits)):
-                if n not in lst_index:
-                    logits[n] = float("-inf")
+            # for n in range(len(logits)):
+            #     if n not in lst_index:
+            #         logits[n] = float("-inf")
+
+            original_logits = logits.clone()
+            logits[:] = float("-inf")
+            logits[lst_index] = original_logits[lst_index]
             predicted_tensor = torch.argmax(logits)
+
             for fun in ids_lst:
                 predicted = predicted_tensor.item()
                 if len(fun) == 0 or 0 >= len(fun) or fun[0] != predicted:
                     remove_lst.append(fun) 
                 else:
                     fun.pop(0)
-
+# numpy
             for fun in remove_lst:
                 if fun not in ids_lst:
                     continue
@@ -182,13 +184,13 @@ class LLM:
             if "," in token_text or "}" in token_text:
                 break
             
-            new_token.append(llm.decode(predicted_tensor))
+            new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
 
         return new_token,inputs
     def ft_string(self,inputs,new_token):
         # print("the input that will",llm.decode(inputs))
-        stop = llm.encode('"').tolist()[0][0]
+        stop = self.fixed_tokens['"']
         for _ in range(30):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
@@ -199,8 +201,8 @@ class LLM:
             token_text = llm.decode([token_id])
 
             # print("---> predict out", repr(token_text))
-            if '"' and "\n" in token_text:
-                new_token,inputs =self.ft_constrain_tokens('"',inputs,new_token)
+            if '"' in token_text and "\n" in token_text:
+                new_token,inputs =self.ft_constrain_tokens(self.fixed_tokens['"'],inputs,new_token)
                 # print("the first break")
                 break
             new_token.append(token_id)
@@ -269,11 +271,17 @@ class LLM:
 
             elif start == 8:
                 logits = torch.tensor(llm.get_logits_from_input_ids(inputs))
-                comma = self.fixed_tokens[","]
-                brace = self.fixed_tokens["}"]
-                for i in range(len(logits)):
-                    if i not in [comma, brace]:
-                        logits[i] = float("-inf")
+                comma = self.fixed_tokens[","][0]
+                brace = self.fixed_tokens["}"][0]
+
+                original_logits = logits.clone()
+                logits[:] = float("-inf")
+                logits[brace] = original_logits[brace]
+                logits[comma] = original_logits[comma]
+
+                # for i in range(len(logits)):
+                #     if i not in [comma, brace]:
+                #         logits[i] = float("-inf")
                 predicted_tensor = torch.argmax(logits)
                 token = llm.decode([predicted_tensor.item()])
                 # print("stop here first")
