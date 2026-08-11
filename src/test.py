@@ -7,7 +7,6 @@ from llm_sdk.llm_sdk import Small_LLM_Model
 class LLM:
 
   def __init__(self, json_path="/goinfre/cramadan/project/data/input/functions_definition.json"):
-    # تحسين 1: قراءة وتخزين بيانات الدوال مرة واحدة عند بدء التشغيل
     with open(json_path, "r") as file:
       self.functions_text = json.load(file)
 
