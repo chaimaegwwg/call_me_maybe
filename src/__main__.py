@@ -16,10 +16,6 @@ class LLM:
             "arguments": llm.encode("arguments").tolist()[0]
         }
 
-    def register_function(self):
-        pass
-    def add_numbers(a: int, b: int):
-        return a + b
     def all_functions(self):
         lst = []
 
@@ -70,8 +66,9 @@ class LLM:
 
     def ft_constrain(self,parameter,inputs,new_token):
         token = self.vocab[parameter]
-        print("here the debug",token)
+        # print("here the debug",token)
         new_token.append(token)
+        inputs.append(token)
         return new_token, inputs
 
 
@@ -127,6 +124,34 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs,name_of_func
+    def check_unknown(self, inputs, llm):
+        logits = llm.get_logits_from_input_ids(inputs)
+        logits = torch.tensor(logits)
+
+        unknown_token = llm.encode("unknown").tolist()[0][0]
+        unknown_score = logits[unknown_token]
+
+        best_function_score = float("-inf")
+
+        for function in self.all_functions():
+            function_tokens = llm.encode(function).tolist()[0]
+
+            if len(function_tokens) == 0:
+                continue
+
+            token_id = function_tokens[0]
+            score = logits[token_id]
+
+            if score > best_function_score:
+                best_function_score = score
+
+        print("unknown:", unknown_score)
+        print("best function:", best_function_score)
+
+        if unknown_score > best_function_score:
+            return True
+
+        return False
     def ft_constrain_parameters(self,inputs,new_token,name_of_func,llm):
         name = llm.decode(name_of_func).strip()
         parameters = self.get_parameters(name)
@@ -168,7 +193,6 @@ class LLM:
                     remove_lst.append(fun) 
                 else:
                     fun.pop(0)
-# numpy
             for fun in remove_lst:
                 if fun not in ids_lst:
                     continue
@@ -194,7 +218,7 @@ class LLM:
         return new_token,inputs
     def ft_string(self,inputs,new_token):
         # print("the input that will",llm.decode(inputs))
-        stop = self.fixed_tokens['"']
+        stop = self.vocab['"']
         for _ in range(30):
             logits = self.llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
@@ -229,17 +253,35 @@ class LLM:
                 new_token,inputs = self.ft_constrain('"',inputs,new_token)
                 new_token,inputs = self.ft_constrain_tokens(self.fixed_tokens["function"],inputs,new_token)
                 new_token,inputs =self.ft_constrain('"',inputs,new_token)
-                print("state 1",llm.decode(new_token))
+                # print("state 1",llm.decode(new_token))
                 start +=1
             elif start == 2:
                 new_token,inputs = self.ft_constrain(":",inputs,new_token)
                 start +=1
             elif start == 3:
-                print("it reached here the state 3")
-                new_token,inputs =self.ft_constrain('"',inputs,new_token)
-                new_token,inputs,name_of_func = self.ft_constrain_name_function(inputs,new_token,llm)
-                new_token,inputs =self.ft_constrain('"',inputs,new_token)
-                print("state 2",llm.decode(new_token))   
+                if self.check_unknown(inputs, llm):
+                    print("NO MATCH -> unknown")
+
+                    unknown_tokens = llm.encode("unknown").tolist()[0]
+
+                    for token_id in unknown_tokens:
+                        new_token.append(token_id)
+                        inputs.append(token_id)
+
+                    name_of_func = unknown_tokens
+
+                else:
+                    new_token, inputs, name_of_func = self.ft_constrain_name_function(inputs, new_token, llm)
+
+                new_token, inputs = self.ft_constrain('"', inputs, new_token)
+
+
+
+                # print("it reached here the state 3")
+                # new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                # new_token,inputs,name_of_func = self.ft_constrain_name_function(inputs,new_token,llm)
+                # new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                # # print("state 2",llm.decode(new_token))   
                 start+=1
             elif start == 4:
                 new_token,inputs =self.ft_constrain(',' ,inputs,new_token)
@@ -249,7 +291,15 @@ class LLM:
                 new_token,inputs =self.ft_constrain(':',inputs,new_token)
                 start +=1
             elif start == 5:
-                new_token,inputs =self.ft_constrain("{",inputs,new_token)
+                new_token, inputs = self.ft_constrain("{", inputs, new_token)
+                function_name = llm.decode(name_of_func).strip()
+                if function_name == "unknown":
+                    new_token, inputs = self.ft_constrain("}", inputs, new_token)
+                    new_token, inputs = self.ft_constrain("}", inputs, new_token)
+                    start = 11
+                else:
+                    start += 1
+                # new_token,inputs =self.ft_constrain("{",inputs,new_token)
                 start +=1
             elif start == 6:
                 new_token,inputs =self.ft_constrain('"',inputs,new_token)
@@ -259,8 +309,8 @@ class LLM:
                 new_token,inputs =self.ft_constrain(':',inputs,new_token)
                 start+=1
             elif start == 7:
-                print("it reached here the state 7")
-                print("state 7",llm.decode(new_token))   
+                # print("it reached here the state 7")
+                # print("state 7",llm.decode(new_token))   
                 parameters_t = llm.decode(parameter).strip()
                 parameter_type = self.parameter_type_func(parameters_t).strip()
                 if parameter_type == "number":
@@ -276,8 +326,8 @@ class LLM:
                 start+=1
 
             elif start == 8:
-                print("it reached here the state 8")
-                print("state 8",llm.decode(new_token))   
+                # print("it reached here the state 8")
+                # print("state 8",llm.decode(new_token))   
                 logits = torch.tensor(llm.get_logits_from_input_ids(inputs))
                 comma = self.vocab[","]
                 brace = self.vocab["}"]
@@ -296,7 +346,7 @@ class LLM:
                 # print("it reached hereee",llm.decode(new_token))
                 start += 1
             elif start == 9:
-                print("it reached here the state 9")
+                # print("it reached here the state 9")
                 nw = llm.decode(new_token)
                 if token == ",":
                     new_token,inputs =self.ft_constrain(",",inputs,new_token)
