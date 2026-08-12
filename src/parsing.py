@@ -40,7 +40,16 @@ class Functions(BaseModel):
     name: str 
     description: str 
     parameters: Dict[str, Parameter]
-    returns: Returns 
+    returns: Returns
+    @model_validator(mode="after")
+    def check_function(self):
+        if not self.name.strip():
+            raise ValueError("invalid name")
+
+        if not self.description.strip():
+            raise ValueError("invalid description")
+
+        return self
 
 
 
