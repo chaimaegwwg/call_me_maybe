@@ -2,7 +2,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from llm_sdk.llm_sdk import Small_LLM_Model
 import torch
 import json
+import argparse
 import sys
+from pathlib import Path
 
 
 class LLM:
@@ -12,8 +14,9 @@ class LLM:
         self.llm = llm
         self.vocab = vocab
         self.fixed_tokens = {
-            "function": llm.encode("function").tolist()[0],
-            "arguments": llm.encode("arguments").tolist()[0]
+            "name": llm.encode("name").tolist()[0],
+            "arguments": llm.encode("arguments").tolist()[0],
+            "prompt": llm.encode("prompt").tolist()[0]
         }
 
     def all_functions(self):
@@ -21,24 +24,32 @@ class LLM:
 
         for function in self.functions:
             lst.append(function["name"])
-
+        # lst.append("unknown")
         return lst
     
     
    
-    def parameter_type_func(self,parameter):
-        lst = "l"
-        # lst = []
-        # for function in functions_text:
-        for function in self.functions:
-            try:
-                lst = function["parameters"][parameter]
-            except:
-                continue
+    def parameter_type_func(self, function_name, parameter):
+        parameters = self.get_parameters(function_name)
 
+        if parameters is None:
+            return None
 
-        lst = lst["type"]
-        return lst
+        if parameter not in parameters:
+            return None
+
+        return parameters[parameter]["type"]
+        # lst = "l"
+        # # lst = []
+        # # for function in functions_text:
+        # for function in self.functions:
+        #     try:
+        #         lst = function["parameters"][parameter]
+        #     except:
+        #         continue
+
+        # lst = lst["type"]
+        # return lst
 
 
     def get_parameters(self, function_name):
@@ -124,34 +135,7 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs,name_of_func
-    def check_unknown(self, inputs, llm):
-        logits = llm.get_logits_from_input_ids(inputs)
-        logits = torch.tensor(logits)
 
-        unknown_token = llm.encode("unknown").tolist()[0][0]
-        unknown_score = logits[unknown_token]
-
-        best_function_score = float("-inf")
-
-        for function in self.all_functions():
-            function_tokens = llm.encode(function).tolist()[0]
-
-            if len(function_tokens) == 0:
-                continue
-
-            token_id = function_tokens[0]
-            score = logits[token_id]
-
-            if score > best_function_score:
-                best_function_score = score
-
-        print("unknown:", unknown_score)
-        print("best function:", best_function_score)
-
-        if unknown_score > best_function_score:
-            return True
-
-        return False
     def ft_constrain_parameters(self,inputs,new_token,name_of_func,llm):
         name = llm.decode(name_of_func).strip()
         parameters = self.get_parameters(name)
@@ -201,21 +185,65 @@ class LLM:
             new_token.append(predicted_tensor.item())
             inputs.append(predicted_tensor.item())
         return new_token,inputs,name_of_parameter
-    def ft_numb(self,inputs,new_token,llm):
+    def ft_numb_num(self, inputs, new_token, llm):
         for _ in range(10):
             logits = llm.get_logits_from_input_ids(inputs)
             logits = torch.tensor(logits)
 
             predicted_tensor = torch.argmax(logits)
             token_text = llm.decode([predicted_tensor.item()])
-            
+            print("NUMBER TOKEN:", repr(token_text))
             if "," in token_text or "}" in token_text:
                 break
-            
-            new_token.append(predicted_tensor.item())
-            inputs.append(predicted_tensor.item())
 
-        return new_token,inputs
+            try:
+                fl = llm.decode([predicted_tensor.item()])
+                print("debug", fl)
+                fl = int(fl)
+
+                print("after", fl)
+
+                last = llm.encode(str(fl)).tolist()[0]
+
+                new_token.extend(last)
+                inputs.extend(last)
+
+                return new_token, inputs
+
+            except ValueError:
+                return new_token, inputs
+
+        return new_token, inputs
+    def ft_numb(self, inputs, new_token, llm):
+        for _ in range(10):
+            logits = llm.get_logits_from_input_ids(inputs)
+            logits = torch.tensor(logits)
+
+            predicted_tensor = torch.argmax(logits)
+            token_text = llm.decode([predicted_tensor.item()])
+            print("NUMBER TOKEN:", repr(token_text))
+            if "," in token_text or "}" in token_text:
+                break
+
+            try:
+                fl = llm.decode([predicted_tensor.item()])
+                print("debug", fl)
+                fl = float(fl)
+
+                print("after", fl)
+
+                last = llm.encode(str(fl)).tolist()[0]
+
+                new_token.extend(last)
+                inputs.extend(last)
+
+                return new_token, inputs
+
+            except ValueError:
+                return new_token, inputs
+
+        return new_token, inputs
+
     def ft_string(self,inputs,new_token):
         # print("the input that will",llm.decode(inputs))
         stop = self.vocab['"']
@@ -240,7 +268,8 @@ class LLM:
                 # print("because it stop here")
                 break
         return new_token, inputs
-    def generate_text(self,prompt,llm):
+    def generate_text(self,prompt,llm,user_request):
+        # parameter = 0
         inputs = llm.encode(prompt)
         inputs = inputs.tolist()[0]
         new_token =[]
@@ -251,27 +280,43 @@ class LLM:
                 start +=1
             elif start ==1:
                 new_token,inputs = self.ft_constrain('"',inputs,new_token)
-                new_token,inputs = self.ft_constrain_tokens(self.fixed_tokens["function"],inputs,new_token)
+                new_token,inputs = self.ft_constrain_tokens(self.fixed_tokens["prompt"],inputs,new_token)
                 new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                new_token,inputs =self.ft_constrain(':',inputs,new_token)
+                new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                escaped_request = json.dumps(user_request)[1:-1]
+                prompt_tokens = llm.encode(escaped_request).tolist()[0]
+
+                new_token, inputs = self.ft_constrain_tokens(prompt_tokens,inputs,new_token)
+
+                new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                new_token,inputs =self.ft_constrain(',',inputs,new_token)
+
+
+                new_token,inputs = self.ft_constrain('"',inputs,new_token)
+                new_token,inputs = self.ft_constrain_tokens(self.fixed_tokens["name"],inputs,new_token)
+                new_token,inputs =self.ft_constrain('"',inputs,new_token)
+                
                 # print("state 1",llm.decode(new_token))
                 start +=1
             elif start == 2:
                 new_token,inputs = self.ft_constrain(":",inputs,new_token)
                 start +=1
             elif start == 3:
-                if self.check_unknown(inputs, llm):
-                    print("NO MATCH -> unknown")
+                # if self.check_unknown(inputs, llm):
+                #     print("NO MATCH -> unknown")
 
-                    unknown_tokens = llm.encode("unknown").tolist()[0]
+                #     unknown_tokens = llm.encode("unknown").tolist()[0]
 
-                    for token_id in unknown_tokens:
-                        new_token.append(token_id)
-                        inputs.append(token_id)
+                #     for token_id in unknown_tokens:
+                #         new_token.append(token_id)
+                #         inputs.append(token_id)
 
-                    name_of_func = unknown_tokens
+                #     name_of_func = unknown_tokens
 
-                else:
-                    new_token, inputs, name_of_func = self.ft_constrain_name_function(inputs, new_token, llm)
+                # else:
+                new_token, inputs = self.ft_constrain('"', inputs, new_token)
+                new_token, inputs, name_of_func = self.ft_constrain_name_function(inputs, new_token, llm)
 
                 new_token, inputs = self.ft_constrain('"', inputs, new_token)
 
@@ -293,12 +338,11 @@ class LLM:
             elif start == 5:
                 new_token, inputs = self.ft_constrain("{", inputs, new_token)
                 function_name = llm.decode(name_of_func).strip()
-                if function_name == "unknown":
-                    new_token, inputs = self.ft_constrain("}", inputs, new_token)
-                    new_token, inputs = self.ft_constrain("}", inputs, new_token)
-                    start = 11
-                else:
-                    start += 1
+                # if function_name == "unknown":
+                #     new_token, inputs = self.ft_constrain("}", inputs, new_token)
+                #     new_token, inputs = self.ft_constrain("}", inputs, new_token)
+                #     start = 11
+            
                 # new_token,inputs =self.ft_constrain("{",inputs,new_token)
                 start +=1
             elif start == 6:
@@ -309,21 +353,29 @@ class LLM:
                 new_token,inputs =self.ft_constrain(':',inputs,new_token)
                 start+=1
             elif start == 7:
-                # print("it reached here the state 7")
-                # print("state 7",llm.decode(new_token))   
                 parameters_t = llm.decode(parameter).strip()
-                parameter_type = self.parameter_type_func(parameters_t).strip()
+                function_name = llm.decode(name_of_func).strip()
+
+                parameter_type = self.parameter_type_func(
+                    function_name,
+                    parameters_t
+                )
+    #   "type": "boolean"
+#  or parameter_type == "integer" ,
                 if parameter_type == "number":
-                    new_token,inputs = self.ft_numb(inputs,new_token,llm)
-                    
-                elif parameter_type == "string":
-                    # print("it go here string correctly")
+                    new_token, inputs = self.ft_numb_num(inputs, new_token, llm)
+                elif parameter_type == "integer" or parameter_type == "float":
+                    new_token, inputs = self.ft_numb(inputs, new_token, llm)
+
+                elif parameter_type == "string" or parameter_type == "boolean":
                     new_token, inputs = self.ft_constrain('"', inputs, new_token)
-                    new_token,inputs = self.ft_string(inputs,new_token)
-                    # print(llm.decode(new_token))
+                    new_token, inputs = self.ft_string(inputs, new_token)
+
                 else:
-                    print("None parameter")
-                start+=1
+                    print("Unknown parameter:", parameters_t)
+                    return None
+
+                start += 1
 
             elif start == 8:
                 # print("it reached here the state 8")
@@ -336,7 +388,6 @@ class LLM:
                 logits[:] = float("-inf")
                 logits[brace] = original_logits[brace]
                 logits[comma] = original_logits[comma]
-
                 # for i in range(len(logits)):
                 #     if i not in [comma, brace]:
                 #         logits[i] = float("-inf")
@@ -373,6 +424,7 @@ class LLM:
         
         answer = llm.decode(new_token)
         print(repr(answer))
+        return answer
    
 
 def read_vocab(llm):
@@ -384,8 +436,39 @@ def read_vocab(llm):
         print(f"Error:",{e})
         sys.exit(0)
     return vocab
+def write_output(output_text):
+    output_path = Path("data/answers.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-def maaan_t():
+    try:
+        with open(output_path, "w", encoding="utf-8") as file:
+            json.dump(output_text, file, indent=4)
+
+    except Exception as error:
+        print(f"Error writing output: {error}")
+
+def parser_args() -> Any:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--functions_definition",
+        default="data/input/functions_definition.json"
+    )
+
+    parser.add_argument(
+        "--input",
+        default="data/input/function_calling_tests.json"
+    )
+
+    parser.add_argument(
+        "--output",
+        default="data/output/function_calling_results.json"
+    )
+
+    args = parser.parse_args()
+    return args
+def maaan_t(args):
+    answer_lst = []
     llm = Small_LLM_Model()
     vocab = read_vocab(llm)
     S = LLM(llm,vocab)
@@ -404,7 +487,7 @@ def maaan_t():
     for i in range(11):
         print("--------------->the promopt",i)
         user_request = prompt[i]["prompt"]    
-        S.generate_text(f"""You are a function-calling assistant.
+        answer = S.generate_text(f"""You are a function-calling assistant.
 
         You are given:
 
@@ -434,9 +517,17 @@ def maaan_t():
         }}
         }}
 
-    Do not explain your reasoning.
-    Do not return Markdown.
-    If no function matches, return null.""",llm)
+        Do not explain your reasoning.
+        Do not return Markdown.
+        If no function matches, return null.""",llm,user_request)
+        if answer is not None:
+            try:
+                answer_lst.append(json.loads(answer))
+            except json.JSONDecodeError as e:
+                print("INVALID JSON:")
+                print(repr(answer))
+                print("ERROR:", e)
+    write_output(answer_lst)
 
 try:
     maaan_t()
